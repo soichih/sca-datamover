@@ -23,6 +23,7 @@
     "node-uuid": "~1.4.3",
     "sequelize": "~3.5.1",
     "sqlite3": "~3.0.10",
-    "async": "~1.4.2"
+    "async": "~1.4.2",
+    "winston": "~1.0.1"
   }
 }
