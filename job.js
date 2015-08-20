@@ -16,8 +16,10 @@ exports.job = function(conf) {
 exports.job.prototype.task = function(name, task) {
     var job = this;
 
+    //attach extra attributes to task function
     task.id = String(job.tasks.length);
-    task._name = name; //attach an attribute to task function
+    task._name = name; 
+
     this.tasks.push(task);
     
     //report to progress service that this task exists!
@@ -58,12 +60,11 @@ exports.job.prototype.run = function(done) {
     var job = this;
     dm.logger.info("running job: "+job.id);
     async.eachSeries(this.tasks, function(task, cb) {
-        dm.logger.info("running task: "+ task._name);
         job.progress({status: 'running', msg: 'Task starting'}, job.id+'.'+task.id);
         task(task, function(err, cont) {
             if(err) {
-                dm.logger.error("task failed jobid:"+job.id+" taskid:"+task.id);
-                dm.logger.error(err);
+                dm.logger.error("task failed jobid:"+job.id+" taskid:"+task.id+ " taskname:"+task._name);
+                dm.logger.error(JSON.stringify(err));
                 if(cont) {
                     job.progress({status: 'failed', msg: (err.msg?err.msg:"Failed") + " :: continuing"}, job.id+'.'+task.id);
                     cb(); //return null to continue job

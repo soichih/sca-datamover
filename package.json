@@ -1,6 +1,6 @@
 {
   "name": "sca-datamover",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "SCA datamover service responsible for moving stuff around",
   "main": "index.js",
   "scripts": {

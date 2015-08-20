@@ -29,6 +29,11 @@ exports.tasks = {
             if(code == 0) cb(null);
             else cb({code:code, signal:signal});
         });
+        tar.on('error', function(err) {
+            dm.logger.error("tarfiles task failed using cwd:"+conf.cwd);
+            dm.logger.error(err);
+            //'close' will still fire so no need for cb(err);
+        });
     },
 
     zipfiles: function(conf, cb) {
@@ -44,6 +49,11 @@ exports.tasks = {
         });
         zip.stdout.on('data', function(data) {
             if(conf.on_progress) conf.on_progress(data.toString());
+        });
+        zip.on('error', function(err) {
+            dm.logger.error("zipfiles task failed using cwd:"+conf.cwd);
+            dm.logger.error(err);
+            //'close' will still fire so no need for cb(err);
         });
     },
 };
