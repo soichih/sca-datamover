@@ -1,36 +1,70 @@
 
+//node
+var assert = require('assert');
+
+//contrib
 var uuid = require('node-uuid');
 var async = require('async');
 var amqp = require('amqp');
 
+//mine
 var dm = require('./index').datamover;
 
 exports.job = function(conf) {
-    this.id = uuid.v4(); //random
-    this.name = conf.name || "job "+this.id;
+    this.id = conf.id || uuid.v4(); //random
+    this.name = conf.name || "Job:"+this.id;
+    this.execution_mode = conf.type || 'serial';
     this.tasks = [];
+    this.status = {tasks: []}; //for local status tree
 
-    this.status = {name: this.name, tasks: {}};
+    this.progress({name: this.name, progress: 0, status: 'waiting', msg: 'Job registered'});
 }
 
-exports.job.prototype.task = function(name, task) {
+exports.job.prototype.addTask = function(task) {
+    //set default for missing data
     var job = this;
+    if(task.id === undefined) task.id = String(this.tasks.length);
+    if(task.weight === undefined) task.weight = 1;
+    if(task.name === undefined) task.name = "Task:"+task.id+" for job:"+this.id;
+    assert(task.work != undefined); //work must exist
 
-    //attach extra attributes to task function
-    task.id = String(job.tasks.length);
-    task._name = name; 
+    task.progress = function(p) {
+        console.log(job.id+"."+task.id);
+        job.progress(p, job.id+"."+task.id);
+    }
 
     this.tasks.push(task);
     
-    //report to progress service that this task exists!
-    //TODO - let caller decode on the weight (or should we even use it?)
-    job.progress({name: name, progress: 0, status: 'waiting', msg: 'Task registered', weight: 1}, job.id+'.'+task.id);
+    //report to progress service that this task exists
+    this.progress({
+        name: task.name, 
+        progress: 0, 
+        status: 'waiting', /*msg: 'Task created',*/ 
+        weight: task.weight
+    }, this.id+'.'+task.id);
+
+    return task;
+}
+
+exports.job.prototype.addJob = function(conf) {
+    //use the task id as job id
+    conf.id = this.id+"."+String(this.tasks.length);
+    console.log("adding job");
+    console.dir(conf);
+
+    var subjob = new exports.job(conf);
+    var subtask = this.addTask({
+        name: conf.name,
+        work: function(task, cb) {
+            subjob.run(cb);
+        }
+    });
+    return subjob;
 }
 
 exports.job.prototype.progress = function(p, key) {
     if(key == undefined) key = this.id;
     if(dm.progress_ex) {
-        //dm.logger.info(key);
         dm.progress_ex.publish(key, p);
     } else {
         dm.logger.debug(p); 
@@ -59,32 +93,49 @@ exports.job.prototype.getstatusnode = function(key) {
 exports.job.prototype.run = function(done) {
     var job = this;
     dm.logger.info("running job: "+job.id);
-    async.eachSeries(this.tasks, function(task, cb) {
-        job.progress({status: 'running', msg: 'Task starting'}, job.id+'.'+task.id);
-        task(task, function(err, cont) {
+    job.progress({status: 'running', msg:'Processing tasks'}, job.id);
+
+    function runtask(task, cb) {
+        job.progress({status: 'running', msg: 'Running task'}, job.id+'.'+task.id);
+        task.work(task, function(err, cont) {
             if(err) {
-                dm.logger.error("task failed jobid:"+job.id+" taskid:"+task.id+ " taskname:"+task._name);
+                dm.logger.error("task failed jobid:"+job.id+" taskid:"+task.id+ " taskname:"+task.name);
                 dm.logger.error(JSON.stringify(err));
                 if(cont) {
-                    job.progress({status: 'failed', msg: (err.msg?err.msg:"Failed") + " :: continuing"}, job.id+'.'+task.id);
+                    job.progress({status: 'failed', msg: (err.msg || JSON.stringify(err)) + " Continuing job"/*, progress: 1*/}, job.id+'.'+task.id);
                     cb(); //return null to continue job
                 } else {
-                    job.progress({status: 'failed', msg: (err.msg?err.msg:"Failed") + " :: aborting job"}, job.id+'.'+task.id);
+                    job.progress({status: 'failed', msg: (err.msg || JSON.stringify(err)) + " :: aborting job"}, job.id+'.'+task.id);
                     cb(err);
                 }
             } else {
                 //all good!
                 //var node = job.getstatusnode(job.id+'.'+task.id);
                 //dm.logger.info("task finished successfully: "+job.id+'.'+task.id);
-                job.progress({progress: 1, status: 'finished', msg: 'Task finished Successfully'}, job.id+'.'+task.id);
+                job.progress({progress: 1, status: 'finished', msg: 'Finished running task'}, job.id+'.'+task.id);
                 cb();
             }
         });
-    }, function() {
+    }
+
+    function finishjob(err) {
         dm.logger.info("completed job: "+job.id);
-        job.progress({status: 'finished'}, job.id);
+        if(err) {
+            job.progress({status: 'failed', msg: 'Job failed : '+err.toString()}, job.id);
+        }  else {
+            job.progress({status: 'finished', msg: 'All task completed'}, job.id);
+        }
         //console.log(JSON.stringify(job.status, null, 4));
         done(); //TODO should I pass job error / status etc back?
-    });
+    }
+
+    if(job.execution_mode == 'serial') {
+        async.eachSeries(this.tasks, runtask, finishjob);
+    } else if(job.execution_mode == 'parallel') {
+        //TODO untested
+        async.eachParallel(this.tasks, runtask, finishjob);
+    } else {
+        throw new Exception("unknown execution mode:"+this.execution_mode);
+    }
 }
 

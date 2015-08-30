@@ -48,6 +48,7 @@ exports.tasks = {
             else cb({code:code, signal:signal});
         });
         zip.stdout.on('data', function(data) {
+            //TODO parse output so that I can report a better progress report
             if(conf.on_progress) conf.on_progress(data.toString());
         });
         zip.on('error', function(err) {
