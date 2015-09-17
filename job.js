@@ -14,8 +14,9 @@ exports.job = function(conf) {
     this.id = conf.id || uuid.v4(); //random
     this.name = conf.name || "Job:"+this.id;
     this.execution_mode = conf.type || 'serial';
+    this.status = conf.status || {tasks: [], id: this.id}; //for local status tree
+
     this.tasks = [];
-    this.status = {tasks: []}; //for local status tree
 
     this.progress({name: this.name, progress: 0, status: 'waiting', msg: 'Job registered'});
 }
@@ -29,7 +30,7 @@ exports.job.prototype.addTask = function(task) {
     assert(task.work != undefined); //work must exist
 
     task.progress = function(p) {
-        console.log(job.id+"."+task.id);
+        //console.log(job.id+"."+task.id);
         job.progress(p, job.id+"."+task.id);
     }
 
@@ -49,8 +50,10 @@ exports.job.prototype.addTask = function(task) {
 exports.job.prototype.addJob = function(conf) {
     //use the task id as job id
     conf.id = this.id+"."+String(this.tasks.length);
-    console.log("adding job");
-    console.dir(conf);
+    //dm.logger.debug("adding subjob: "+conf.id); 
+
+    //inherit the same status object from parent
+    conf.status = this.status;
 
     var subjob = new exports.job(conf);
     var subtask = this.addTask({
@@ -70,23 +73,30 @@ exports.job.prototype.progress = function(p, key) {
         dm.logger.debug(p); 
     }
 
-    //update status 
+    //update local status 
     var node = this.getstatusnode(key);
     for (var at in p) { node[at] = p[at]; }
 }
 
+//locate local status (incase user don't want to use progress service) node from given key
 exports.job.prototype.getstatusnode = function(key) {
-    //also store status information locally (redundant with progress service)
     var tokens = key.split(".");
-    //first, identify the edge node to update
-    tokens.shift(); //skip the jobid
-    var node = this.status;
+    var node = this.status; //set to root
+    tokens.shift(); 
     tokens.forEach(function(token) {
-        if(node.tasks[token] == undefined) {
-            node.tasks[token] = {tasks: {}};
+        var subnode = null;
+        node.tasks.forEach(function(task) {
+            if(task.id == token) subnode = task;
+        });
+        //add if not found
+        if(subnode == null) {
+            //dm.logger.debug("adding new subnode on tasks in "+node.id);
+            subnode = {tasks: [], id: token};
+            node.tasks.push(subnode);
         }
-        node = node.tasks[token];
+        node = subnode; //move up
     });
+    //console.log(JSON.stringify(this.status, null, 4));
     return node;
 }
 
@@ -103,15 +113,13 @@ exports.job.prototype.run = function(done) {
                 dm.logger.error(JSON.stringify(err));
                 if(cont) {
                     job.progress({status: 'failed', msg: (err.msg || JSON.stringify(err)) + " Continuing job"/*, progress: 1*/}, job.id+'.'+task.id);
-                    cb(); //return null to continue job
+                    cb(); //return null to continue job by ignoring the error
                 } else {
                     job.progress({status: 'failed', msg: (err.msg || JSON.stringify(err)) + " :: aborting job"}, job.id+'.'+task.id);
                     cb(err);
                 }
             } else {
                 //all good!
-                //var node = job.getstatusnode(job.id+'.'+task.id);
-                //dm.logger.info("task finished successfully: "+job.id+'.'+task.id);
                 job.progress({progress: 1, status: 'finished', msg: 'Finished running task'}, job.id+'.'+task.id);
                 cb();
             }
