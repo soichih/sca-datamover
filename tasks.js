@@ -39,7 +39,7 @@ exports.tasks = {
     zipfiles: function(conf, cb) {
         //logger.info("zipping "+conf.dest+" "+conf.path+ " at " +conf.cwd);
         //TODO - if you change the zip directory structure, make sure you are zipping all subdirectories and sub files, etc..
-        var zip = spawn('zip', ['-r', conf.dest, conf.path], {cwd: conf.cwd});        
+        var zip = spawn('zip', ['-rm', conf.dest, conf.path], {cwd: conf.cwd});        
         //zip.stderr.pipe(dm.logger);
         //zip.stdout.pipe(concat(logout));
         zip.stderr.pipe(concat(logerror));
