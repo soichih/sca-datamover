@@ -122,7 +122,7 @@ exports.job.prototype.run = function(done) {
                 dm.logger.error("task failed jobid:"+job.id+" taskid:"+task.id+ " taskname:"+task.name);
                 dm.logger.error(JSON.stringify(err));
                 if(cont) {
-                    job.progress({status: 'failed', msg: (err.msg || JSON.stringify(err)) + " Continuing job"/*, progress: 1*/}, job.id+'.'+task.id);
+                    job.progress({status: 'failed', msg: (err.msg || JSON.stringify(err)) + " :: continuing job"/*, progress: 1*/}, job.id+'.'+task.id);
                     cb(); //return null to continue job by ignoring the error
                 } else {
                     job.progress({status: 'failed', msg: (err.msg || JSON.stringify(err)) + " :: aborting job"}, job.id+'.'+task.id);
@@ -130,7 +130,9 @@ exports.job.prototype.run = function(done) {
                 }
             } else {
                 //all good!
-                job.progress({progress: 1, status: 'finished', msg: 'Finished running task'}, job.id+'.'+task.id);
+                var p = {status: 'finished', msg: 'Finished running task'};
+                if(!task.job) p.progress = 1; //edge task.. let's report 100% completion.
+                var p = job.progress(p, job.id+'.'+task.id);
                 cb();
             }
         });
