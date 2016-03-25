@@ -10,6 +10,7 @@ var amqp = require('amqp');
 //mine
 var dm = require('./index').datamover;
 
+//set job.request_stop = true to abort tasks
 exports.job = function(conf) {
     this.id = conf.id || uuid.v4(); //random
     this.name = conf.name || "Job:"+this.id;
@@ -30,7 +31,6 @@ exports.job.prototype.addTask = function(task) {
     assert(task.work != undefined); //work must exist
 
     task.progress = function(p) {
-        //console.log(job.id+"."+task.id);
         job.progress(p, job.id+"."+task.id);
     }
 
@@ -50,7 +50,6 @@ exports.job.prototype.addTask = function(task) {
 exports.job.prototype.addJob = function(conf) {
     //use the task id as job id
     conf.id = this.id+"."+String(this.tasks.length);
-    //dm.logger.debug("adding subjob: "+conf.id); 
 
     //inherit the same status object from parent
     conf.status = this.status;
@@ -60,7 +59,8 @@ exports.job.prototype.addJob = function(conf) {
         name: conf.name,
         work: function(task, cb) {
             subjob.run(cb);
-        }
+        },
+        job: subjob
     });
     return subjob;
 }
@@ -68,10 +68,9 @@ exports.job.prototype.addJob = function(conf) {
 exports.job.prototype.progress = function(p, key) {
     if(key == undefined) key = this.id;
     if(dm.progress_ex) {
-        dm.progress_ex.publish(key, p);
-    } else {
-        dm.logger.debug(p); 
-    }
+        dm.progress_ex.publish("_isdp."+key, p);
+    } //else {
+    dm.logger.debug(["_isdp."+key, p]); 
 
     //update local status 
     var node = this.getstatusnode(key);
@@ -100,12 +99,23 @@ exports.job.prototype.getstatusnode = function(key) {
     return node;
 }
 
+exports.job.prototype.stop = function(done) {
+    this.request_stop = true;
+    this.tasks.forEach(function(task) {
+        if(task.job) task.job.stop();
+    }); 
+}
+
 exports.job.prototype.run = function(done) {
     var job = this;
     dm.logger.info("running job: "+job.id);
     job.progress({status: 'running', msg:'Processing tasks'}, job.id);
 
     function runtask(task, cb) {
+        if(job.request_stop) {
+            job.progress({status: 'canceled', msg: 'Stop requested'}, job.id+'.'+task.id);
+            return cb();
+        }
         job.progress({status: 'running', msg: 'Running task'}, job.id+'.'+task.id);
         task.work(task, function(err, cont) {
             if(err) {
@@ -133,15 +143,13 @@ exports.job.prototype.run = function(done) {
         }  else {
             job.progress({status: 'finished', msg: 'All task completed'}, job.id);
         }
-        //console.log(JSON.stringify(job.status, null, 4));
-        done(); //TODO should I pass job error / status etc back?
+        done(err);
     }
 
     if(job.execution_mode == 'serial') {
         async.eachSeries(this.tasks, runtask, finishjob);
     } else if(job.execution_mode == 'parallel') {
-        //TODO untested
-        async.eachParallel(this.tasks, runtask, finishjob);
+        async.eachParallel(this.tasks, runtask, finishjob); //TODO untested
     } else {
         throw new Exception("unknown execution mode:"+this.execution_mode);
     }
