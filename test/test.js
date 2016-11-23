@@ -4,7 +4,7 @@ var expect = require('chai').expect;
 var assert = require('assert');
 //var request = require('supertest');  
 //var amqp = require('amqp');
-//var uuid = require('node-uuid');
+//var uuid = require('uuid');
 //var winston = require('winston');
 
 //mine

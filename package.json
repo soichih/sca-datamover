@@ -20,11 +20,11 @@
     "url": "https://github.com/soichih/sca-datamover/issues"
   },
   "dependencies": {
-    "node-uuid": "~1.4.3",
-    "async": "~1.4.2",
-    "winston": "~1.0.1",
     "amqp": "~0.2.4",
-    "concat-stream": "~1.5.0"
+    "async": "~1.4.2",
+    "concat-stream": "~1.5.0",
+    "uuid": "^3.0.0",
+    "winston": "~1.0.1"
   },
   "devDependencies": {
     "mocha": "~2.3.3",
