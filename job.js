@@ -3,7 +3,7 @@
 var assert = require('assert');
 
 //contrib
-var uuid = require('node-uuid');
+var uuid = require('uuid');
 var async = require('async');
 var amqp = require('amqp');
 
